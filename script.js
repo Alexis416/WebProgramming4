@@ -1,4 +1,4 @@
-const API_KEY = 'YOUR_API_KEY_HERE';
+const API_KEY = '37e026f6d87a287b169733da043c932c';
 
 const weatherList = document.getElementById('weatherList');
 const loading = document.getElementById('loading');
