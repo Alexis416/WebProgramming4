@@ -577,3 +577,46 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+button:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.fa-spin {
+    animation: fa-spin 1s infinite linear;
+}
+
+@keyframes fa-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.suggestion-item:first-child {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+.suggestion-item:last-child {
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+@media (max-width: 380px) {
+    .header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .weather-section h2 {
+        font-size: 1.4rem;
+    }
+    
+    .forecast-day .day {
+        font-size: 0.9rem;
+    }
+}
