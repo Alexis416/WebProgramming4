@@ -1,6 +1,6 @@
 // Конфигурация приложения
 const CONFIG = {
-    API_KEY: '37e026f6d87a287b169733da043c932c', // Замените на ваш API ключ OpenWeatherMap
+    API_KEY: '37e026f6d87a287b169733da043c932c',
     BASE_URL: 'https://api.openweathermap.org/data/2.5',
     GEOCODING_URL: 'https://api.openweathermap.org/geo/1.0/direct',
     ICON_URL: 'https://openweathermap.org/img/wn/',
