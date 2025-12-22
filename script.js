@@ -129,6 +129,16 @@ function initGeolocation() {
       lon: pos.coords.longitude
     });
     saveLocations();
-    saveLocations();
     loadAll();
-  }
+  });
+}
+
+document.getElementById('addCityBtn').onclick = () => {
+  const value = document.getElementById('cityInput').value.trim();
+  if (value) addCity(value);
+};
+
+document.getElementById('refreshBtn').onclick = loadAll;
+
+initGeolocation();
+loadAll();
