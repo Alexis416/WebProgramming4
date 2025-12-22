@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Прогноз погоды</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-cloud-sun"></i> Прогноз погоды</h1>
+            <div class="header-controls">
+                <button id="refreshBtn" class="btn btn-refresh">
+                    <i class="fas fa-sync-alt"></i> Обновить
+                </button>
+                <button id="addCityBtn" class="btn btn-add">
+                    <i class="fas fa-plus"></i> Добавить город
+                </button>
+            </div>
+        </header>
+
+        <main>
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Загружаем данные о погоде...</p>
+            </div>
+
+            <div id="errorMessage" class="error-message hidden">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>Произошла ошибка при загрузке данных. Пожалуйста, попробуйте позже.</p>
+            </div>
+
+            <div id="weatherContainer" class="weather-container hidden">
+                <section id="currentLocationSection" class="weather-section">
+                    <h2><i class="fas fa-map-marker-alt"></i> Текущее местоположение</h2>
+                    <div id="currentWeather" class="current-weather">
+                        <!-- Данные о погоде для текущего местоположения будут здесь -->
+                    </div>
+                </section>
+
+                <section id="addedCitiesSection" class="weather-section hidden">
+                    <h2><i class="fas fa-city"></i> Добавленные города</h2>
+                    <div id="addedCities" class="cities-grid">
+                        <!-- Добавленные города будут здесь -->
+                    </div>
+                </section>
+            </div>
+
+            <div id="locationDenied" class="location-denied hidden">
+                <div class="denied-message">
+                    <i class="fas fa-map-marker-slash"></i>
+                    <h2>Доступ к геолокации запрещен</h2>
+                    <p>Чтобы получить прогноз погоды, пожалуйста, добавьте город вручную.</p>
+                    <button id="addCityFormBtn" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Добавить город
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Модальное окно для добавления города -->
+        <div id="addCityModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Добавить город</h2>
+                    <button id="closeModal" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="addCityForm">
+                        <div class="form-group">
+                            <label for="cityInput">Название города</label>
+                            <div class="input-with-suggestions">
+                                <input type="text" id="cityInput" placeholder="Начните вводить название города..." autocomplete="off">
+                                <div id="suggestions" class="suggestions hidden"></div>
+                            </div>
+                            <div id="cityError" class="error-message hidden"></div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">
+                            <i class="fas fa-plus"></i> Добавить
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>Данные о погоде предоставлены <a href="https://openweathermap.org/" target="_blank">OpenWeatherMap</a></p>
+            <p>Максимальное количество городов: 3 (включая текущее местоположение)</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
