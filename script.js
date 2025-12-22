@@ -1,11 +1,11 @@
 // Конфигурация приложения
 const CONFIG = {
-    API_KEY: '37e026f6d87a287b169733da043c932c',
+    API_KEY: '37e026f6d87a287b169733da043c932c', // Замените на ваш API ключ OpenWeatherMap
     BASE_URL: 'https://api.openweathermap.org/data/2.5',
     GEOCODING_URL: 'https://api.openweathermap.org/geo/1.0/direct',
     ICON_URL: 'https://openweathermap.org/img/wn/',
-    MAX_CITIES: 3, // Максимальное количество городов (включая текущее местоположение)
-    DEFAULT_CITIES: ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Нижний Новгород']
+    MAX_CITIES: 3,
+    DEFAULT_CITIES: ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Нижний Новгород', 'Самара', 'Омск', 'Челябинск', 'Ростов-на-Дону']
 };
 
 // Состояние приложения
@@ -13,7 +13,11 @@ const state = {
     currentLocation: null,
     addedCities: [],
     isLoading: true,
-    hasLocationAccess: null
+    hasLocationAccess: null,
+    weatherData: {
+        current: null,
+        added: []
+    }
 };
 
 // DOM элементы
@@ -42,45 +46,54 @@ function init() {
     loadStateFromStorage();
     setupEventListeners();
     
-    // Проверяем доступ к геолокации
-    if (state.currentLocation === null) {
-        requestLocation();
-    } else {
-        // Загружаем погоду для сохраненных локаций
+    // Проверяем, есть ли сохраненные данные
+    if (state.currentLocation || state.addedCities.length > 0) {
         loadAllWeatherData();
+    } else {
+        requestLocation();
     }
 }
 
 // Загрузка состояния из localStorage
 function loadStateFromStorage() {
-    const savedState = localStorage.getItem('weatherAppState');
-    if (savedState) {
-        const parsedState = JSON.parse(savedState);
-        state.currentLocation = parsedState.currentLocation;
-        state.addedCities = parsedState.addedCities || [];
-        state.hasLocationAccess = parsedState.hasLocationAccess;
+    try {
+        const savedState = localStorage.getItem('weatherAppState');
+        if (savedState) {
+            const parsedState = JSON.parse(savedState);
+            state.currentLocation = parsedState.currentLocation;
+            state.addedCities = parsedState.addedCities || [];
+            state.hasLocationAccess = parsedState.hasLocationAccess;
+            state.weatherData = parsedState.weatherData || { current: null, added: [] };
+        }
+    } catch (e) {
+        console.error('Ошибка при загрузке состояния:', e);
+        // Сбрасываем состояние при ошибке
+        state.currentLocation = null;
+        state.addedCities = [];
+        state.weatherData = { current: null, added: [] };
     }
 }
 
 // Сохранение состояния в localStorage
 function saveStateToStorage() {
-    const stateToSave = {
-        currentLocation: state.currentLocation,
-        addedCities: state.addedCities,
-        hasLocationAccess: state.hasLocationAccess
-    };
-    localStorage.setItem('weatherAppState', JSON.stringify(stateToSave));
+    try {
+        const stateToSave = {
+            currentLocation: state.currentLocation,
+            addedCities: state.addedCities,
+            hasLocationAccess: state.hasLocationAccess,
+            weatherData: state.weatherData
+        };
+        localStorage.setItem('weatherAppState', JSON.stringify(stateToSave));
+    } catch (e) {
+        console.error('Ошибка при сохранении состояния:', e);
+    }
 }
 
 // Настройка обработчиков событий
 function setupEventListeners() {
     // Кнопка обновления
     elements.refreshBtn.addEventListener('click', () => {
-        if (state.currentLocation || state.addedCities.length > 0) {
-            loadAllWeatherData();
-        } else {
-            requestLocation();
-        }
+        loadAllWeatherData();
     });
 
     // Кнопки добавления города
@@ -100,6 +113,7 @@ function setupEventListeners() {
 
     // Ввод в поле города
     elements.cityInput.addEventListener('input', handleCityInput);
+    elements.cityInput.addEventListener('focus', handleCityInput);
 
     // Выбор подсказки
     elements.suggestions.addEventListener('click', (e) => {
@@ -107,60 +121,62 @@ function setupEventListeners() {
             const cityName = e.target.dataset.city;
             elements.cityInput.value = cityName;
             elements.suggestions.classList.add('hidden');
-            // Автоматически отправляем форму
-            setTimeout(() => {
-                handleAddCity(new Event('submit', { cancelable: true }));
-            }, 100);
         }
     });
 }
 
 // Запрос геолокации
-function requestLocation() {
+async function requestLocation() {
     showLoading();
     
     if (!navigator.geolocation) {
+        console.error('Геолокация не поддерживается браузером');
         showLocationDenied();
         return;
     }
     
-    navigator.geolocation.getCurrentPosition(
-        // Успех
-        async (position) => {
+    try {
+        const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            });
+        });
+        
+        const { latitude, longitude } = position.coords;
+        
+        // Получаем название города по координатам
+        try {
+            const locationData = await getLocationName(latitude, longitude);
+            state.currentLocation = {
+                name: 'Текущее местоположение',
+                lat: latitude,
+                lon: longitude,
+                cityName: locationData.name
+            };
             state.hasLocationAccess = true;
-            const { latitude, longitude } = position.coords;
-            
-            // Получаем название города по координатам
-            try {
-                const locationName = await getLocationName(latitude, longitude);
-                state.currentLocation = {
-                    name: 'Текущее местоположение',
-                    lat: latitude,
-                    lon: longitude,
-                    cityName: locationName
-                };
-                saveStateToStorage();
-                loadAllWeatherData();
-            } catch (error) {
-                console.error('Ошибка при получении названия местоположения:', error);
-                state.currentLocation = {
-                    name: 'Текущее местоположение',
-                    lat: latitude,
-                    lon: longitude,
-                    cityName: 'Ваше местоположение'
-                };
-                saveStateToStorage();
-                loadAllWeatherData();
-            }
-        },
-        // Ошибка
-        (error) => {
-            console.error('Ошибка геолокации:', error);
-            state.hasLocationAccess = false;
             saveStateToStorage();
-            showLocationDenied();
+            loadAllWeatherData();
+        } catch (error) {
+            console.error('Ошибка при получении названия местоположения:', error);
+            // Используем координаты даже если не удалось получить название
+            state.currentLocation = {
+                name: 'Текущее местоположение',
+                lat: latitude,
+                lon: longitude,
+                cityName: 'Ваше местоположение'
+            };
+            state.hasLocationAccess = true;
+            saveStateToStorage();
+            loadAllWeatherData();
         }
-    );
+    } catch (error) {
+        console.error('Ошибка геолокации:', error);
+        state.hasLocationAccess = false;
+        saveStateToStorage();
+        showLocationDenied();
+    }
 }
 
 // Получение названия местоположения по координатам
@@ -168,14 +184,20 @@ async function getLocationName(lat, lon) {
     const url = `${CONFIG.GEOCODING_URL}?lat=${lat}&lon=${lon}&limit=1&appid=${CONFIG.API_KEY}`;
     
     const response = await fetch(url);
-    if (!response.ok) throw new Error('Ошибка при получении названия местоположения');
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
     
     const data = await response.json();
     if (data.length > 0) {
-        return `${data[0].name}, ${data[0].country}`;
+        return {
+            name: `${data[0].name}, ${data[0].country}`,
+            lat: data[0].lat,
+            lon: data[0].lon
+        };
     }
     
-    return 'Неизвестное местоположение';
+    throw new Error('Местоположение не найдено');
 }
 
 // Загрузка всех данных о погоде
@@ -199,62 +221,79 @@ async function loadAllWeatherData() {
         const results = await Promise.allSettled(promises);
         
         // Обрабатываем результаты
+        const weatherResults = [];
         let hasErrors = false;
+        
         results.forEach((result, index) => {
-            if (result.status === 'rejected') {
-                hasErrors = true;
+            if (result.status === 'fulfilled') {
+                weatherResults.push(result.value);
+            } else {
                 console.error(`Ошибка при загрузке погоды для локации ${index}:`, result.reason);
+                hasErrors = true;
+                // Добавляем null для сохранения порядка
+                weatherResults.push(null);
             }
         });
         
-        if (hasErrors && results.every(r => r.status === 'rejected')) {
-            // Все запросы завершились ошибкой
-            throw new Error('Не удалось загрузить данные о погоде');
+        // Сохраняем данные о погоде
+        if (state.currentLocation) {
+            state.weatherData.current = weatherResults[0];
+            state.weatherData.added = weatherResults.slice(1);
+        } else {
+            state.weatherData.current = null;
+            state.weatherData.added = weatherResults;
         }
+        
+        saveStateToStorage();
         
         // Отображаем данные
         displayWeatherData();
         
+        if (hasErrors && results.every(r => r.status === 'rejected')) {
+            throw new Error('Не удалось загрузить данные о погоде');
+        }
+        
     } catch (error) {
         console.error('Ошибка при загрузке данных о погоде:', error);
-        showError();
+        // Показываем данные из кэша, если есть
+        if (state.weatherData.current || state.weatherData.added.length > 0) {
+            displayWeatherData();
+        } else {
+            showError();
+        }
     }
 }
 
 // Получение данных о погоде
 async function getWeatherData(lat, lon, isCurrent = false, cityName = null) {
-    // Получаем текущую погоду
-    const currentWeatherUrl = `${CONFIG.BASE_URL}/weather?lat=${lat}&lon=${lon}&appid=${CONFIG.API_KEY}&units=metric&lang=ru`;
-    
-    // Получаем прогноз на 5 дней
+    // Используем один запрос для получения прогноза на 5 дней
     const forecastUrl = `${CONFIG.BASE_URL}/forecast?lat=${lat}&lon=${lon}&appid=${CONFIG.API_KEY}&units=metric&lang=ru`;
     
-    const [currentResponse, forecastResponse] = await Promise.all([
-        fetch(currentWeatherUrl),
-        fetch(forecastUrl)
-    ]);
+    const response = await fetch(forecastUrl);
     
-    if (!currentResponse.ok || !forecastResponse.ok) {
-        throw new Error('Ошибка при получении данных о погоде');
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    const currentData = await currentResponse.json();
-    const forecastData = await forecastResponse.json();
+    const forecastData = await response.json();
+    
+    // Текущая погода - первый элемент списка
+    const currentWeather = forecastData.list[0];
     
     // Обрабатываем прогноз - группируем по дням
     const dailyForecast = processForecastData(forecastData);
     
     return {
         isCurrent,
-        cityName: cityName || currentData.name,
+        cityName: cityName || forecastData.city.name,
         current: {
-            temp: Math.round(currentData.main.temp),
-            feelsLike: Math.round(currentData.main.feels_like),
-            humidity: currentData.main.humidity,
-            pressure: currentData.main.pressure,
-            windSpeed: currentData.wind.speed,
-            description: currentData.weather[0].description,
-            icon: currentData.weather[0].icon
+            temp: Math.round(currentWeather.main.temp),
+            feelsLike: Math.round(currentWeather.main.feels_like),
+            humidity: currentWeather.main.humidity,
+            pressure: currentWeather.main.pressure,
+            windSpeed: currentWeather.wind.speed,
+            description: currentWeather.weather[0].description,
+            icon: currentWeather.weather[0].icon
         },
         forecast: dailyForecast.slice(0, 3) // Берем только 3 дня (сегодня + 2 следующих)
     };
@@ -266,12 +305,14 @@ function processForecastData(forecastData) {
     
     forecastData.list.forEach(item => {
         const date = new Date(item.dt * 1000);
-        const day = date.toLocaleDateString('ru-RU', { weekday: 'long' });
         const dateKey = date.toISOString().split('T')[0]; // Формат YYYY-MM-DD
         
         if (!dailyData[dateKey]) {
+            const dayNames = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+            const dayName = dayNames[date.getDay()];
+            
             dailyData[dateKey] = {
-                day: day.charAt(0).toUpperCase() + day.slice(1),
+                day: dayName,
                 date: dateKey,
                 temps: [],
                 descriptions: [],
@@ -324,7 +365,7 @@ function displayWeatherData() {
     hideLoading();
     
     // Проверяем, есть ли данные для отображения
-    if (!state.currentLocation && state.addedCities.length === 0) {
+    if ((!state.weatherData.current || !state.currentLocation) && state.weatherData.added.length === 0) {
         elements.weatherContainer.classList.add('hidden');
         elements.locationDenied.classList.remove('hidden');
         return;
@@ -338,14 +379,14 @@ function displayWeatherData() {
     elements.addedCities.innerHTML = '';
     
     // Отображаем текущее местоположение, если есть
-    if (state.currentLocation) {
+    if (state.weatherData.current && state.currentLocation) {
         displayCurrentLocationWeather();
     } else {
         elements.currentLocationSection.classList.add('hidden');
     }
     
     // Отображаем добавленные города, если есть
-    if (state.addedCities.length > 0) {
+    if (state.weatherData.added.length > 0 && state.weatherData.added[0] !== null) {
         elements.addedCitiesSection.classList.remove('hidden');
         displayAddedCitiesWeather();
     } else {
@@ -357,50 +398,41 @@ function displayWeatherData() {
 function displayCurrentLocationWeather() {
     elements.currentLocationSection.classList.remove('hidden');
     
-    // В реальном приложении здесь был бы рендеринг данных из state
-    // Для демонстрации создаем заглушку
+    const weather = state.weatherData.current;
+    if (!weather) return;
+    
     const currentWeatherHTML = `
         <div class="weather-today">
-            <div class="temp">--°C</div>
-            <div class="description">Загрузка...</div>
+            <div class="temp">${weather.current.temp}°C</div>
+            <div class="description">${weather.current.description}</div>
             <div class="weather-details">
                 <div class="weather-detail">
                     <i class="fas fa-thermometer-half"></i>
-                    <span>Ощущается как: --°C</span>
+                    <span>Ощущается как: ${weather.current.feelsLike}°C</span>
                 </div>
                 <div class="weather-detail">
                     <i class="fas fa-tint"></i>
-                    <span>Влажность: --%</span>
+                    <span>Влажность: ${weather.current.humidity}%</span>
                 </div>
                 <div class="weather-detail">
                     <i class="fas fa-tachometer-alt"></i>
-                    <span>Давление: -- hPa</span>
+                    <span>Давление: ${weather.current.pressure} hPa</span>
                 </div>
                 <div class="weather-detail">
                     <i class="fas fa-wind"></i>
-                    <span>Ветер: -- м/с</span>
+                    <span>Ветер: ${weather.current.windSpeed} м/с</span>
                 </div>
             </div>
         </div>
         <div class="forecast">
-            <div class="forecast-day">
-                <div class="day">Сегодня</div>
-                <img src="${CONFIG.ICON_URL}01d@2x.png" alt="Ясно" width="60" height="60">
-                <div class="forecast-temp">--°C</div>
-                <div class="forecast-desc">Загрузка...</div>
-            </div>
-            <div class="forecast-day">
-                <div class="day">Завтра</div>
-                <img src="${CONFIG.ICON_URL}01d@2x.png" alt="Ясно" width="60" height="60">
-                <div class="forecast-temp">--°C</div>
-                <div class="forecast-desc">Загрузка...</div>
-            </div>
-            <div class="forecast-day">
-                <div class="day">Послезавтра</div>
-                <img src="${CONFIG.ICON_URL}01d@2x.png" alt="Ясно" width="60" height="60">
-                <div class="forecast-temp">--°C</div>
-                <div class="forecast-desc">Загрузка...</div>
-            </div>
+            ${weather.forecast.map((day, index) => `
+                <div class="forecast-day">
+                    <div class="day">${index === 0 ? 'Сегодня' : index === 1 ? 'Завтра' : day.day}</div>
+                    <img src="${CONFIG.ICON_URL}${day.icon}@2x.png" alt="${day.description}" width="60" height="60">
+                    <div class="forecast-temp">${day.temp}°C</div>
+                    <div class="forecast-desc">${day.description}</div>
+                </div>
+            `).join('')}
         </div>
     `;
     
@@ -409,36 +441,30 @@ function displayCurrentLocationWeather() {
 
 // Отображение погоды для добавленных городов
 function displayAddedCitiesWeather() {
-    // В реальном приложении здесь был бы рендеринг данных из state
-    // Для демонстрации создаем заглушку
-    state.addedCities.forEach((city, index) => {
+    state.weatherData.added.forEach((weather, index) => {
+        if (!weather) return;
+        
         const cityCard = document.createElement('div');
         cityCard.className = 'city-card';
         cityCard.innerHTML = `
             <div class="city-header">
-                <h3 class="city-name">${city.name}</h3>
+                <h3 class="city-name">${weather.cityName}</h3>
                 <button class="delete-city" data-index="${index}">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <div class="city-weather">
-                <div class="city-temp">--°C</div>
-                <img src="${CONFIG.ICON_URL}01d@2x.png" alt="Ясно" width="50" height="50">
+                <div class="city-temp">${weather.current.temp}°C</div>
+                <img src="${CONFIG.ICON_URL}${weather.current.icon}@2x.png" alt="${weather.current.description}" width="50" height="50">
             </div>
-            <div class="city-desc">Загрузка данных...</div>
+            <div class="city-desc">${weather.current.description}</div>
             <div class="forecast">
-                <div class="forecast-day">
-                    <div class="day">Сег.</div>
-                    <div class="forecast-temp">--°</div>
-                </div>
-                <div class="forecast-day">
-                    <div class="day">Зав.</div>
-                    <div class="forecast-temp">--°</div>
-                </div>
-                <div class="forecast-day">
-                    <div class="day">После.</div>
-                    <div class="forecast-temp">--°</div>
-                </div>
+                ${weather.forecast.map((day, idx) => `
+                    <div class="forecast-day">
+                        <div class="day">${idx === 0 ? 'Сег.' : idx === 1 ? 'Зав.' : 'После.'}</div>
+                        <div class="forecast-temp">${day.temp}°</div>
+                    </div>
+                `).join('')}
             </div>
         `;
         
@@ -453,6 +479,7 @@ function displayAddedCitiesWeather() {
 // Удаление города
 function deleteCity(index) {
     state.addedCities.splice(index, 1);
+    state.weatherData.added.splice(index, 1);
     saveStateToStorage();
     displayWeatherData();
 }
@@ -461,6 +488,7 @@ function deleteCity(index) {
 function showAddCityModal() {
     elements.addCityModal.classList.remove('hidden');
     elements.cityInput.focus();
+    handleCityInput(); // Показать подсказки сразу
 }
 
 // Скрыть модальное окно добавления города
@@ -475,8 +503,9 @@ function hideAddCityModal() {
 function handleCityInput() {
     const query = elements.cityInput.value.trim();
     
-    if (query.length < 2) {
-        elements.suggestions.classList.add('hidden');
+    if (query.length < 1) {
+        // Показываем все города по умолчанию при пустом поле
+        showAllSuggestions();
         return;
     }
     
@@ -486,7 +515,8 @@ function handleCityInput() {
     );
     
     if (filteredCities.length === 0) {
-        elements.suggestions.classList.add('hidden');
+        elements.suggestions.innerHTML = '<div class="suggestion-item">Город не найден</div>';
+        elements.suggestions.classList.remove('hidden');
         return;
     }
     
@@ -495,6 +525,14 @@ function handleCityInput() {
         .map(city => `<div class="suggestion-item" data-city="${city}">${city}</div>`)
         .join('');
     
+    elements.suggestions.classList.remove('hidden');
+}
+
+// Показать все подсказки
+function showAllSuggestions() {
+    elements.suggestions.innerHTML = CONFIG.DEFAULT_CITIES
+        .map(city => `<div class="suggestion-item" data-city="${city}">${city}</div>`)
+        .join('');
     elements.suggestions.classList.remove('hidden');
 }
 
@@ -523,46 +561,81 @@ async function handleAddCity(e) {
         return;
     }
     
+    // Показываем состояние загрузки
+    const submitBtn = elements.addCityForm.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Поиск...';
+    submitBtn.disabled = true;
+    
     // Пытаемся получить координаты города
     try {
         const coordinates = await getCityCoordinates(cityName);
         
         if (!coordinates) {
             showCityError('Город не найден. Пожалуйста, проверьте название');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
             return;
         }
         
         // Добавляем город в состояние
-        state.addedCities.push({
+        const newCity = {
             name: cityName,
             lat: coordinates.lat,
             lon: coordinates.lon
-        });
+        };
         
+        state.addedCities.push(newCity);
         saveStateToStorage();
         hideAddCityModal();
+        
+        // Загружаем погоду для нового города
         loadAllWeatherData();
         
     } catch (error) {
         console.error('Ошибка при получении координат города:', error);
         showCityError('Ошибка при поиске города. Пожалуйста, попробуйте еще раз');
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
     }
 }
 
 // Получение координат города
 async function getCityCoordinates(cityName) {
+    // Сначала проверяем в предопределенных городах
+    const defaultCity = CONFIG.DEFAULT_CITIES.find(city => 
+        city.toLowerCase() === cityName.toLowerCase()
+    );
+    
+    if (defaultCity) {
+        // Для демонстрации возвращаем координаты Москвы для всех городов
+        // В реальном приложении нужно иметь координаты для каждого города
+        return {
+            lat: 55.7558, // Широта Москвы
+            lon: 37.6173  // Долгота Москвы
+        };
+    }
+    
+    // Если город не в списке, пытаемся получить через API
     const url = `${CONFIG.GEOCODING_URL}?q=${encodeURIComponent(cityName)}&limit=1&appid=${CONFIG.API_KEY}`;
     
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Ошибка при поиске города');
-    
-    const data = await response.json();
-    if (data.length === 0) return null;
-    
-    return {
-        lat: data[0].lat,
-        lon: data[0].lon
-    };
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        if (data.length === 0) return null;
+        
+        return {
+            lat: data[0].lat,
+            lon: data[0].lon
+        };
+    } catch (error) {
+        console.error('Ошибка при поиске города через API:', error);
+        return null;
+    }
 }
 
 // Показать ошибку для поля города
@@ -598,6 +671,7 @@ function showLocationDenied() {
     hideLoading();
     elements.locationDenied.classList.remove('hidden');
     elements.weatherContainer.classList.add('hidden');
+    elements.errorMessage.classList.add('hidden');
 }
 
 // Запуск приложения
